@@ -1,6 +1,8 @@
+mod errors;
 mod parser;
 mod tokenizer;
 
+pub use errors::ParseError;
 pub use parser::JsonElement;
 
 pub use tokenizer::{Tokenizer, JsonToken};
@@ -15,7 +17,7 @@ mod tests {
 
     #[test]
     fn it_works() {
-        let json = " true \"I would like \\n to kill myself :) \"";
+        let json = " true \"\\u0061\\u0062\\u0064\\uD834\\uDD1e\"";
         let mut t = Tokenizer::new(json);
         loop {
             let token = t.next_token();
