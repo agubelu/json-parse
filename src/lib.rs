@@ -1,6 +1,6 @@
+mod data;
 mod parser;
 mod tokenizer;
-mod data;
 
 pub use data::{JsonElement, ParseError};
 

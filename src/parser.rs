@@ -2,8 +2,8 @@ use crate::data::{JsonElement, JsonToken, TokenKind, TokenPosition};
 use crate::tokenizer::Tokenizer;
 use crate::ParseError;
 
-use std::mem::replace;
 use std::collections::HashSet;
+use std::mem::replace;
 
 pub struct JsonParser<'a> {
     tokenizer: Tokenizer<'a>,
@@ -13,7 +13,10 @@ pub struct JsonParser<'a> {
 impl<'a> JsonParser<'a> {
     pub fn from(json: &'a str) -> Self {
         // Populate `upcoming` with a dummy token that will be replaced
-        Self { upcoming: JsonToken::dummy(), tokenizer: Tokenizer::new(json) }
+        Self {
+            upcoming: JsonToken::dummy(),
+            tokenizer: Tokenizer::new(json),
+        }
     }
 
     pub fn parse(mut self) -> Result<JsonElement, ParseError> {
@@ -55,9 +58,11 @@ impl<'a> JsonParser<'a> {
 
                 self.expect(TokenKind::Colon)?;
                 let value = self.parse_element()?;
-                keys.insert(key.clone());  // TODO change?
+                keys.insert(key.clone()); // TODO change?
                 pairs.push((key, value));
-                if !self.matches(TokenKind::Comma)? { break }
+                if !self.matches(TokenKind::Comma)? {
+                    break;
+                }
             }
             // Consume the closing bracket
             self.expect(TokenKind::RightBrace)?;
@@ -73,7 +78,9 @@ impl<'a> JsonParser<'a> {
         if !self.matches(TokenKind::RightBracket)? {
             loop {
                 arr.push(self.parse_element()?);
-                if !self.matches(TokenKind::Comma)? { break }
+                if !self.matches(TokenKind::Comma)? {
+                    break;
+                }
             }
             // Consume the closing bracket
             self.expect(TokenKind::RightBracket)?;
@@ -106,7 +113,7 @@ impl<'a> JsonParser<'a> {
         let matched = self.upcoming.kind == expected;
         if matched {
             self.upcoming = self.tokenizer.next_token()?;
-         }
+        }
         Ok(matched)
     }
 
@@ -114,20 +121,26 @@ impl<'a> JsonParser<'a> {
         /* Consumes and returns the current token only if it matches the expected type.
          * If not, returns a ParseError indicating the expected and actual tokens.
          * Only use this method with empty TokenKinds to avoid allocating useless data. */
-         if self.upcoming.kind == expected {
+        if self.upcoming.kind == expected {
             // == for TokenKind is overriden to compare only variant type
             self.consume()
-         } else {
-            self.make_error(format!("Expected {}, found {}", expected, &self.upcoming.kind), &self.upcoming)
-         }
+        } else {
+            self.make_error(
+                format!("Expected {}, found {}", expected, &self.upcoming.kind),
+                &self.upcoming,
+            )
+        }
     }
 
     fn expect_string(&mut self) -> Result<JsonToken, ParseError> {
         /* Special case of self.expect() to avoid having to allocate a TokenKind::String */
-         if matches!(self.upcoming.kind, TokenKind::String(_)) {
+        if matches!(self.upcoming.kind, TokenKind::String(_)) {
             self.consume()
-         } else {
-            self.make_error(format!("Expected string, found {}", &self.upcoming.kind), &self.upcoming)
-         }
+        } else {
+            self.make_error(
+                format!("Expected string, found {}", &self.upcoming.kind),
+                &self.upcoming,
+            )
+        }
     }
 }

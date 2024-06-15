@@ -33,7 +33,7 @@ pub enum TokenKind {
     Null,
     Number(f64),
     String(String),
-    Eof
+    Eof,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -83,7 +83,7 @@ impl JsonToken {
 
     pub fn get_string(self) -> String {
         /* Consumes a String-kind token to return the String inside it.
-           Will panic if called on a non-string token. */
+        Will panic if called on a non-string token. */
         match self.kind {
             TokenKind::String(s) => s,
             _ => panic!("Tried to extract a string from an invalid token"),
