@@ -1,5 +1,5 @@
+use crate::data::{JsonToken, ParseError, TokenKind, TokenPosition};
 use std::cmp::min;
-use crate::data::{ParseError, JsonToken, TokenPosition, TokenKind};
 
 pub struct Tokenizer<'a> {
     source: &'a str,
@@ -11,7 +11,12 @@ pub struct Tokenizer<'a> {
 impl<'a> Tokenizer<'a> {
     pub fn new(source: &'a str) -> Self {
         let position = TokenPosition { line: 1, column: 0 };
-        Self { source, start: 0, current: 0, position }
+        Self {
+            source,
+            start: 0,
+            current: 0,
+            position,
+        }
     }
 
     pub fn next_token(&mut self) -> Result<JsonToken, ParseError> {
@@ -55,7 +60,7 @@ impl<'a> Tokenizer<'a> {
                 x if is_forbidden_char(x) => {
                     let msg = string_error_msg(x);
                     return self.make_error(msg);
-                },
+                }
                 x => string.push_str(x),
             }
         }
@@ -74,7 +79,7 @@ impl<'a> Tokenizer<'a> {
             "r" => Ok("\r".to_owned()),
             "t" => Ok("\t".to_owned()),
             "u" => self.parse_unicode_escape(),
-             x  => {
+            x => {
                 let msg = format!("Invalid escape sequence: \\{x}");
                 self.make_error(msg)
             }
@@ -87,8 +92,12 @@ impl<'a> Tokenizer<'a> {
 
         // If this is part of a 32-bit surrogate sequence, we need to parse the second part
         if is_high_surrogate(code) {
-            let error_msg = || format!("The Unicode sequence '{code:04X}' represents an unfinished character. {}",
-                                       "A follow-up Unicode escape sequence was expected but not found.");
+            let error_msg = || {
+                format!(
+                    "The Unicode sequence '{code:04X}' represents an unfinished character. {}",
+                    "A follow-up Unicode escape sequence was expected but not found."
+                )
+            };
             if !self.matches("\\") {
                 return self.make_error(error_msg());
             }
@@ -98,14 +107,15 @@ impl<'a> Tokenizer<'a> {
             }
 
             let code2 = self.parse_u16_encoded()?;
-            String::from_utf16(&[code, code2]).or_else(|_|
-                self.make_error(format!("Invalid unicode character: \\u{code:04X}\\u{code2:04X}"))
-            )
+            String::from_utf16(&[code, code2]).or_else(|_| {
+                self.make_error(format!(
+                    "Invalid unicode character: \\u{code:04X}\\u{code2:04X}"
+                ))
+            })
         } else {
             // Otherwise just turn it into a unicode point and return it if it's valid
-            String::from_utf16(&[code]).or_else(|_|
-                self.make_error(format!("Invalid unicode character: \\u{code:04X}"))
-            )
+            String::from_utf16(&[code])
+                .or_else(|_| self.make_error(format!("Invalid unicode character: \\u{code:04X}")))
         }
     }
 
@@ -114,12 +124,16 @@ impl<'a> Tokenizer<'a> {
          * It should be called when the scanner is at the beggining of the hex code to be scanned.
          * Returns an Err if the sequence is not a 4-character hex sequence. */
         let start = self.current;
-        for _ in 0..4 { self.advance() }
+        for _ in 0..4 {
+            self.advance()
+        }
         let max = self.source.len(); // Be careful not to panic by overstepping our slice's boundaries
-        let seq = &self.source[min(max, start) .. min(max, self.current)];
+        let seq = &self.source[min(max, start)..min(max, self.current)];
 
         if !is_hex(seq) {
-            self.make_error(format!("Invalid Unicode escape sequence: '{seq}' (should be a 4-character hex code)"))
+            self.make_error(format!(
+                "Invalid Unicode escape sequence: '{seq}' (should be a 4-character hex code)"
+            ))
         } else {
             Ok(u16::from_str_radix(seq, 16).unwrap()) // seq is a valid 16-bit hex sequence
         }
@@ -136,7 +150,7 @@ impl<'a> Tokenizer<'a> {
         // (save for the slight deviation above), but this format is also accepted by
         // Rust's str-to-f64 conversion in all cases, so we can safely parse and unwrap it.
         // https://doc.rust-lang.org/std/primitive.f64.html#impl-FromStr-for-f64
-        let s = &self.source[self.start .. self.current];
+        let s = &self.source[self.start..self.current];
         self.make_token(TokenKind::Number(s.parse().unwrap()))
     }
 
@@ -171,7 +185,9 @@ impl<'a> Tokenizer<'a> {
             // Consume the exponent
             self.advance();
             // Consume the sign if present
-            if matches!(self.peek(), "-" | "+") { self.advance() }
+            if matches!(self.peek(), "-" | "+") {
+                self.advance()
+            }
             // Expect one digit and consume the rest
             if !is_number(self.consume()) {
                 return self.make_error("At least a digit is expected after an exponent");
@@ -190,7 +206,7 @@ impl<'a> Tokenizer<'a> {
             self.advance();
         }
 
-        match &self.source[self.start .. self.current] {
+        match &self.source[self.start..self.current] {
             "null" => self.make_token(TokenKind::Null),
             "true" => self.make_token(TokenKind::True),
             "false" => self.make_token(TokenKind::False),
@@ -203,14 +219,18 @@ impl<'a> Tokenizer<'a> {
         // JSON tokens can't spawn multiple lines so we can deduce its start position
         let pos = TokenPosition {
             column: self.position.column - (self.current - self.start),
-            line: self.position.line
+            line: self.position.line,
         };
         Ok(JsonToken { kind, pos })
     }
 
     fn make_error<T, S: Into<String>>(&self, msg: S) -> Result<T, ParseError> {
         /* Creates a ParseError in the current position */
-        Err(ParseError::new(msg.into(), self.position.line, self.position.column))
+        Err(ParseError::new(
+            msg.into(),
+            self.position.line,
+            self.position.column,
+        ))
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -240,7 +260,9 @@ impl<'a> Tokenizer<'a> {
 
     fn matches(&mut self, expected: &str) -> bool {
         let matched = self.peek() == expected;
-        if matched { self.advance() }
+        if matched {
+            self.advance()
+        }
         matched
     }
 
@@ -250,8 +272,8 @@ impl<'a> Tokenizer<'a> {
                 "\n" => {
                     self.position.line += 1;
                     self.position.column = 0;
-                },
-                " " | "\r" | "\t" => {},
+                }
+                " " | "\r" | "\t" => {}
                 _ => return,
             }
             self.advance();
@@ -295,7 +317,7 @@ fn is_forbidden_char(x: &str) -> bool {
 }
 
 fn string_error_msg(ch: &str) -> String {
-    'a'.into()  // TODO change
+    'a'.into() // TODO change
 }
 
 fn is_high_surrogate(x: u16) -> bool {
