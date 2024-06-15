@@ -53,7 +53,7 @@ impl<'a> JsonParser<'a> {
                     break;
                 }
             }
-            // Consume the closing bracket
+            // Consume the closing ]
             self.expect(TokenKind::RightBracket)?;
         }
 
@@ -86,7 +86,7 @@ impl<'a> JsonParser<'a> {
                     break;
                 }
             }
-            // Consume the closing bracket
+            // Consume the closing }
             self.expect(TokenKind::RightBrace)?;
         }
 
