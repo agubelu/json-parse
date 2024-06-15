@@ -2,14 +2,37 @@
 
 use std::fmt::Display;
 
+/// A representation of a JSON element.
 #[derive(Debug, Clone)]
 pub enum JsonElement {
+    /// A literal `null` value
     Null,
+    /// A boolean value (`true` / `false`)
     Boolean(bool),
+    /// A numeric value
     Number(f64),
+    /// A string value. Escape characters and sequences have already been parsed in the contained `String`.
     String(String),
+    /// An array containing any number of other JSON elements.
     Array(Vec<JsonElement>),
+    /// A JSON object, consisting of a series of key-value pairs.
+    ///
+    /// The pairs are represented using a Vec and are provided in the same order in which they are
+    /// defined in the original source.
+    ///
+    /// The `String` keys within an Object are guaranteed to be unique.
     Object(Vec<(String, JsonElement)>),
+}
+
+/// Returned when a JSON string is malformed or contains any errors.
+#[derive(Debug, Clone)]
+pub struct ParseError {
+    /// User-friendly description of the error.
+    pub msg: String,
+    /// 1-based index of the line within the source JSON string in which the error occured.
+    pub line: usize,
+    /// 0-based index of the column within the line where the error occured.
+    pub column: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -36,13 +59,6 @@ pub enum TokenKind {
 
 #[derive(Debug, Clone, Copy)]
 pub struct TokenPosition {
-    pub line: usize,
-    pub column: usize,
-}
-
-#[derive(Debug, Clone)]
-pub struct ParseError {
-    pub msg: String,
     pub line: usize,
     pub column: usize,
 }
