@@ -1,14 +1,14 @@
 use crate::data::{JsonToken, ParseError, TokenKind, TokenPosition};
 use std::cmp::min;
 
-pub struct Tokenizer<'a> {
+pub struct Scanner<'a> {
     source: &'a str,
     start: usize,
     current: usize,
     position: TokenPosition,
 }
 
-impl<'a> Tokenizer<'a> {
+impl<'a> Scanner<'a> {
     pub fn new(source: &'a str) -> Self {
         let position = TokenPosition { line: 1, column: 0 };
         Self {

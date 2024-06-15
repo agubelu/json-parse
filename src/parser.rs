@@ -1,12 +1,12 @@
 use crate::data::{JsonElement, JsonToken, TokenKind, TokenPosition};
-use crate::tokenizer::Tokenizer;
+use crate::scanner::Scanner;
 use crate::ParseError;
 
 use std::collections::HashSet;
 use std::mem::replace;
 
 pub struct JsonParser<'a> {
-    tokenizer: Tokenizer<'a>,
+    scanner: Scanner<'a>,
     upcoming: JsonToken,
 }
 
@@ -15,7 +15,7 @@ impl<'a> JsonParser<'a> {
         // Populate `upcoming` with a dummy token that will be replaced
         Self {
             upcoming: JsonToken::dummy(),
-            tokenizer: Tokenizer::new(json),
+            scanner: Scanner::new(json),
         }
     }
 
@@ -109,14 +109,14 @@ impl<'a> JsonParser<'a> {
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     fn consume(&mut self) -> Result<JsonToken, ParseError> {
-        let next = self.tokenizer.next_token()?;
+        let next = self.scanner.next_token()?;
         Ok(replace(&mut self.upcoming, next))
     }
 
     fn matches(&mut self, expected: TokenKind) -> Result<bool, ParseError> {
         let matched = self.upcoming.kind == expected;
         if matched {
-            self.upcoming = self.tokenizer.next_token()?;
+            self.upcoming = self.scanner.next_token()?;
         }
         Ok(matched)
     }
