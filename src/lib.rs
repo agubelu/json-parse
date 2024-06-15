@@ -13,7 +13,12 @@ mod tests {
     use super::*;
     #[test]
     fn it_works() {
-        let json = "\"bad\\b\\b\\bgood\"";
+        let json = r#"[1,2,3,
+        
+        
+        
+        
+        ?]"#;
         let res = parse(json);
         println!("{:?}", res);
         if let Err(ParseError { msg, .. }) = &res {

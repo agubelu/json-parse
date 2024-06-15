@@ -10,12 +10,11 @@ pub struct Scanner<'a> {
 
 impl<'a> Scanner<'a> {
     pub fn new(source: &'a str) -> Self {
-        let position = TokenPosition { line: 1, column: 0 };
         Self {
             source,
             start: 0,
             current: 0,
-            position,
+            position: TokenPosition::default(),
         }
     }
 
@@ -39,7 +38,7 @@ impl<'a> Scanner<'a> {
             x if is_number_start(x) => self.make_number(),
             x => {
                 let msg = format!("Unexpected character: '{x}'");
-                self.make_error(msg)
+                self.make_error_behind(msg)
             }
         }
     }
@@ -52,14 +51,14 @@ impl<'a> Scanner<'a> {
 
         while !self.matches("\"") {
             if self.is_at_end() {
-                return self.make_error("Unterminated string");
+                return self.make_error_behind("Unterminated string");
             }
 
             match self.consume() {
                 "\\" => string.push_str(&self.parse_escape()?),
                 x if is_forbidden_char(x) => {
                     let msg = string_error_msg(x);
-                    return self.make_error(msg);
+                    return self.make_error_behind(msg);
                 }
                 x => string.push_str(x),
             }
@@ -86,7 +85,7 @@ impl<'a> Scanner<'a> {
                 } else {
                     format!("Invalid escape sequence: \\{x}")
                 };
-                self.make_error(msg)
+                self.make_error_behind(msg)
             }
         }
     }
@@ -104,23 +103,24 @@ impl<'a> Scanner<'a> {
                 )
             };
             if !self.matches("\\") {
-                return self.make_error(error_msg());
+                return self.make_error_here(error_msg());
             }
 
             if !self.matches("u") {
-                return self.make_error(error_msg());
+                return self.make_error_here(error_msg());
             }
 
             let code2 = self.parse_u16_encoded()?;
             String::from_utf16(&[code, code2]).or_else(|_| {
-                self.make_error(format!(
+                self.make_error_behind(format!(
                     "Invalid unicode character: \\u{code:04X}\\u{code2:04X}"
                 ))
             })
         } else {
             // Otherwise just turn it into a unicode point and return it if it's valid
-            String::from_utf16(&[code])
-                .or_else(|_| self.make_error(format!("Invalid unicode character: \\u{code:04X}")))
+            String::from_utf16(&[code]).or_else(|_| {
+                self.make_error_behind(format!("Invalid unicode character: \\u{code:04X}"))
+            })
         }
     }
 
@@ -136,7 +136,7 @@ impl<'a> Scanner<'a> {
         let seq = &self.source[min(max, start)..min(max, self.current)];
 
         if !is_hex(seq) {
-            self.make_error(format!(
+            self.make_error_behind(format!(
                 "Invalid Unicode escape sequence: '{seq}' (should be a 4-character hex code)"
             ))
         } else {
@@ -162,7 +162,7 @@ impl<'a> Scanner<'a> {
     fn scan_integer(&mut self) -> Result<(), ParseError> {
         // If the number started with a minus sign, demand that at least one digit is present
         if self.peek_behind() == "-" && !is_number(self.consume()) {
-            return self.make_error("At least a digit is expected after '-'");
+            return self.make_error_behind("At least a digit is expected after '-'");
         }
         // Skip all follow-up digits to scan the integer part.
         // This violates the official spec which forbids leading zeroes,
@@ -175,7 +175,7 @@ impl<'a> Scanner<'a> {
         /* Scans an optional fraction part, consisting of a dot and at least one digit. */
         if self.matches(".") {
             if !is_number(self.consume()) {
-                return self.make_error("At least a digit is expected after a fraction dot");
+                return self.make_error_behind("At least a digit is expected after a fraction dot");
             }
             self.skip_digits();
         }
@@ -195,7 +195,7 @@ impl<'a> Scanner<'a> {
             }
             // Expect one digit and consume the rest
             if !is_number(self.consume()) {
-                return self.make_error("At least a digit is expected after an exponent");
+                return self.make_error_behind("At least a digit is expected after an exponent");
             }
             self.skip_digits();
         }
@@ -222,7 +222,7 @@ impl<'a> Scanner<'a> {
                     "null" => " (hint: maybe you meant 'null')",
                     _ => "",
                 };
-                self.make_error(format!("Unknown keyword '{x}'{hint}"))
+                self.make_error_at_start(format!("Unknown keyword '{x}'{hint}"))
             }
         }
     }
@@ -237,13 +237,30 @@ impl<'a> Scanner<'a> {
         Ok(JsonToken { kind, pos })
     }
 
-    fn make_error<T, S: Into<String>>(&self, msg: S) -> Result<T, ParseError> {
+    fn make_error_here<T, S: Into<String>>(&self, msg: S) -> Result<T, ParseError> {
+        /* Creates a ParseError at the current character */
+        self.make_error_at(msg, self.position.line, self.position.column)
+    }
+
+    fn make_error_behind<T, S: Into<String>>(&self, msg: S) -> Result<T, ParseError> {
+        /* Creates a ParseError at the previous character */
+        self.make_error_at(msg, self.position.line, self.position.column - 1)
+    }
+
+    fn make_error_at_start<T>(&self, msg: String) -> Result<T, ParseError> {
+        /* Creates a ParseError in the token's starting position */
+        let col = self.position.column - (self.current - self.start);
+        self.make_error_at(msg, self.position.line, col)
+    }
+
+    fn make_error_at<T, S: Into<String>>(
+        &self,
+        msg: S,
+        line: usize,
+        column: usize,
+    ) -> Result<T, ParseError> {
         /* Creates a ParseError in the current position */
-        Err(ParseError::new(
-            msg.into(),
-            self.position.line,
-            self.position.column,
-        ))
+        Err(ParseError::new(msg.into(), line, column))
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -283,13 +300,13 @@ impl<'a> Scanner<'a> {
         loop {
             match self.peek() {
                 "\n" => {
+                    self.advance();
                     self.position.line += 1;
                     self.position.column = 0;
                 }
-                " " | "\r" | "\t" => {}
+                " " | "\r" | "\t" => self.advance(),
                 _ => return,
             }
-            self.advance();
         }
     }
 

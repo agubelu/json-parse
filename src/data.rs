@@ -73,7 +73,7 @@ impl Display for TokenKind {
 }
 
 impl JsonToken {
-    pub fn dummy() -> Self {
+    pub const fn dummy() -> Self {
         let pos = TokenPosition { column: 0, line: 0 };
         let kind = TokenKind::Null;
         Self { pos, kind }
@@ -92,5 +92,11 @@ impl JsonToken {
 impl PartialEq for TokenKind {
     fn eq(&self, other: &Self) -> bool {
         core::mem::discriminant(self) == core::mem::discriminant(other)
+    }
+}
+
+impl Default for TokenPosition {
+    fn default() -> Self {
+        Self { line: 1, column: 0 }
     }
 }
