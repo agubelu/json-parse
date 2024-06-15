@@ -295,7 +295,7 @@ fn is_forbidden_char(x: &str) -> bool {
 }
 
 fn string_error_msg(ch: &str) -> String {
-    'a'.into() // TODO change
+    'a'.into()  // TODO change
 }
 
 fn is_high_surrogate(x: u16) -> bool {
