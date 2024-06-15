@@ -2,13 +2,16 @@ mod parser;
 mod tokenizer;
 mod data;
 
-pub use parser::JsonParser;
 pub use data::{JsonElement, ParseError};
+
+pub fn parse(json: &str) -> Result<JsonElement, ParseError> {
+    parser::JsonParser::from(json).parse()
+}
 
 #[cfg(test)]
 mod tests {
     use parser::JsonParser;
-    
+
     use super::*;
     #[test]
     fn it_works() {

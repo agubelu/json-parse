@@ -268,7 +268,6 @@ impl<'a> Tokenizer<'a> {
     fn is_at_end(&self) -> bool {
         self.current >= self.source.len()
     }
-
 }
 
 fn is_letter(s: &str) -> bool {
