@@ -2,16 +2,14 @@
 
 use std::fmt::Display;
 
-pub type KeyValue = (String, JsonElement);
-
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 pub enum JsonElement {
     Null,
     Boolean(bool),
     Number(f64),
     String(String),
     Array(Vec<JsonElement>),
-    Object(Vec<KeyValue>),
+    Object(Vec<(String, JsonElement)>),
 }
 
 #[derive(Debug, Clone)]

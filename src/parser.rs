@@ -42,35 +42,6 @@ impl<'a> JsonParser<'a> {
         }
     }
 
-    fn parse_object(&mut self) -> Result<JsonElement, ParseError> {
-        // Opening { has already been consumed
-        let mut pairs = vec![];
-        if !self.matches(TokenKind::RightBrace)? {
-            let mut keys = HashSet::new();
-
-            loop {
-                let key_token = self.expect_string()?;
-                let pos = key_token.pos; // Make a copy before destroying the token
-                let key = key_token.get_string();
-                if keys.contains(&key) {
-                    return self.make_error_at(format!("Duplicated object key: \"{key}\""), &pos);
-                }
-
-                self.expect(TokenKind::Colon)?;
-                let value = self.parse_element()?;
-                keys.insert(key.clone()); // TODO change?
-                pairs.push((key, value));
-                if !self.matches(TokenKind::Comma)? {
-                    break;
-                }
-            }
-            // Consume the closing bracket
-            self.expect(TokenKind::RightBrace)?;
-        }
-
-        Ok(JsonElement::Object(pairs))
-    }
-
     fn parse_array(&mut self) -> Result<JsonElement, ParseError> {
         // Opening [ has already been consumed
         let mut arr = vec![];
@@ -87,6 +58,39 @@ impl<'a> JsonParser<'a> {
         }
 
         Ok(JsonElement::Array(arr))
+    }
+
+    fn parse_object(&mut self) -> Result<JsonElement, ParseError> {
+        // Opening { has already been consumed
+        let mut pairs = vec![];
+        if !self.matches(TokenKind::RightBrace)? {
+            let mut keys = HashSet::new();
+
+            loop {
+                let key_token = self.expect_string()?;
+                let pos = key_token.pos; // Copy this before consuming the token in case we need to error out
+                let key = key_token.get_string();
+
+                if keys.contains(&key) {
+                    return self.make_error_at(format!("Duplicated object key: \"{key}\""), &pos);
+                }
+
+                // Parse the rest of the value
+                self.expect(TokenKind::Colon)?;
+                let value = self.parse_element()?;
+
+                keys.insert(key.clone()); // Is there any way to prevent this clone?
+                pairs.push((key, value));
+
+                if !self.matches(TokenKind::Comma)? {
+                    break;
+                }
+            }
+            // Consume the closing bracket
+            self.expect(TokenKind::RightBrace)?;
+        }
+
+        Ok(JsonElement::Object(pairs))
     }
 
     fn unexpected_token_error<T>(&self, token: &JsonToken) -> Result<T, ParseError> {

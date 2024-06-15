@@ -10,13 +10,18 @@ pub fn parse(json: &str) -> Result<JsonElement, ParseError> {
 
 #[cfg(test)]
 mod tests {
-    use parser::JsonParser;
-
     use super::*;
     #[test]
     fn it_works() {
-        let json = "[true, false, false, \"bad\\b\\b\\bgood\"]";
-        let t = JsonParser::from(json);
-        println!("{:?}", t.parse());
+        let json = "\"bad\\b\\b\\bgood\"";
+        let res = parse(json);
+        println!("{:?}", res);
+        if let Err(ParseError { msg, .. }) = &res {
+            println!("{msg}");
+        }
+
+        if let Ok(JsonElement::String(s)) = &res {
+            println!("{s}");
+        }
     }
 }
