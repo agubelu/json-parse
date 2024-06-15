@@ -80,7 +80,12 @@ impl<'a> Tokenizer<'a> {
             "t" => Ok("\t".to_owned()),
             "u" => self.parse_unicode_escape(),
             x => {
-                let msg = format!("Invalid escape sequence: \\{x}");
+                let msg = if x == " " {
+                    "A lone \\ is not allowed inside a string (hint: you can escape it with \\\\)"
+                        .into()
+                } else {
+                    format!("Invalid escape sequence: \\{x}")
+                };
                 self.make_error(msg)
             }
         }
@@ -157,7 +162,7 @@ impl<'a> Tokenizer<'a> {
     fn scan_integer(&mut self) -> Result<(), ParseError> {
         // If the number started with a minus sign, demand that at least one digit is present
         if self.peek_behind() == "-" && !is_number(self.consume()) {
-            return self.make_error("At least a digit was expected after '-'");
+            return self.make_error("At least a digit is expected after '-'");
         }
         // Skip all follow-up digits to scan the integer part.
         // This violates the official spec which forbids leading zeroes,
@@ -207,10 +212,18 @@ impl<'a> Tokenizer<'a> {
         }
 
         match &self.source[self.start..self.current] {
-            "null" => self.make_token(TokenKind::Null),
             "true" => self.make_token(TokenKind::True),
             "false" => self.make_token(TokenKind::False),
-            x => self.make_error(format!("Unknown (case-sensitive) keyword {x}")),
+            "null" => self.make_token(TokenKind::Null),
+            x => {
+                let hint = match x.to_lowercase().as_str() {
+                    "true" => " (hint: maybe you meant 'true')",
+                    "false" => " (hint: maybe you meant 'false')",
+                    "null" => " (hint: maybe you meant 'null')",
+                    _ => "",
+                };
+                self.make_error(format!("Unknown keyword '{x}'{hint}"))
+            }
         }
     }
 
@@ -317,7 +330,20 @@ fn is_forbidden_char(x: &str) -> bool {
 }
 
 fn string_error_msg(ch: &str) -> String {
-    'a'.into() // TODO change
+    // ch must be a control character, because lone \'s are handled by parse_escape(),
+    // and misplaced double quotes will cause other kind of trouble.
+    match ch {
+        "\n" => "Line breaks are not allowed inside a string (hint: you can escape them as \\n)".into(),
+        "\t" => "Literal tabs are not allowed inside a string (hint: you can escape them as \\t)".into(),
+        "\r" => "Carriage return line breaks are not allowed inside a string (hint: you can escape them as \\r)".into(),
+        "\x08" =>  "Backspace control characters are not allowed inside a string (hint: you can escape them as \\b)".into(),
+        "\x0C" =>  "Form-feed control characters are not allowed inside a string (hint: you can escape them as \\f)".into(),
+        _ => {
+            let code = ch.encode_utf16().next().unwrap_or(0);
+            let hex = format!("{code:04X}");
+            format!("The control character U+{hex} is not allowed inside a string (hint: you can escape it as \\u{hex}")
+        }
+    }
 }
 
 fn is_high_surrogate(x: u16) -> bool {

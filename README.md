@@ -6,6 +6,5 @@ Work in progress.
 
 TODO
 ---
-- Error messages for control characters in strings
 - Test stuff
     - Especially unicode escaping
