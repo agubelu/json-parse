@@ -1,62 +1,46 @@
 use std::cmp::min;
-use crate::ParseError;
-
-#[derive(Debug, Clone)]
-pub enum JsonToken {
-    LeftBrace,
-    RightBrace,
-    LeftBracket,
-    RightBracket,
-    Comma,
-    Colon,
-    True,
-    False,
-    Null,
-    Number(f64),
-    String(String),
-    Eof
-}
+use crate::data::{ParseError, JsonToken, TokenPosition, TokenKind};
 
 pub struct Tokenizer<'a> {
     source: &'a str,
     start: usize,
     current: usize,
-    line: usize,
-    column: usize,
+    position: TokenPosition,
 }
 
 impl<'a> Tokenizer<'a> {
     pub fn new(source: &'a str) -> Self {
-        Self { source, start: 0, current: 0, line: 1, column: 0 }
+        let position = TokenPosition { line: 1, column: 0 };
+        Self { source, start: 0, current: 0, position }
     }
 
     pub fn next_token(&mut self) -> Result<JsonToken, ParseError> {
         self.skip_whitespace();
 
         if self.is_at_end() {
-            return Ok(JsonToken::Eof);
+            return self.make_token(TokenKind::Eof);
         }
 
         self.start = self.current;
         match self.consume() {
-            "{" => Ok(JsonToken::LeftBrace),
-            "}" => Ok(JsonToken::RightBrace),
-            "[" => Ok(JsonToken::LeftBracket),
-            "]" => Ok(JsonToken::RightBracket),
-            "," => Ok(JsonToken::Comma),
-            ":" => Ok(JsonToken::Colon),
+            "{" => self.make_token(TokenKind::LeftBrace),
+            "}" => self.make_token(TokenKind::RightBrace),
+            "[" => self.make_token(TokenKind::LeftBracket),
+            "]" => self.make_token(TokenKind::RightBracket),
+            "," => self.make_token(TokenKind::Comma),
+            ":" => self.make_token(TokenKind::Colon),
             "\"" => self.make_string(),
             x if is_letter(x) => self.make_keyword(),
-            x if is_number(x) => self.make_number(),
+            x if is_number_start(x) => self.make_number(),
             x => {
                 let msg = format!("Unexpected character: '{x}'");
                 self.make_error(msg)
-            },
+            }
         }
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // Aux scanners
+    // String scanning
 
     fn make_string(&mut self) -> Result<JsonToken, ParseError> {
         let mut string = String::new();
@@ -68,11 +52,15 @@ impl<'a> Tokenizer<'a> {
 
             match self.consume() {
                 "\\" => string.push_str(&self.parse_escape()?),
+                x if is_forbidden_char(x) => {
+                    let msg = string_error_msg(x);
+                    return self.make_error(msg);
+                },
                 x => string.push_str(x),
             }
         }
 
-        Ok(JsonToken::String(string))
+        self.make_token(TokenKind::String(string))
     }
 
     fn parse_escape(&mut self) -> Result<String, ParseError> {
@@ -89,7 +77,7 @@ impl<'a> Tokenizer<'a> {
              x  => {
                 let msg = format!("Invalid escape sequence: \\{x}");
                 self.make_error(msg)
-            },
+            }
         }
     }
 
@@ -100,7 +88,7 @@ impl<'a> Tokenizer<'a> {
         // If this is part of a 32-bit surrogate sequence, we need to parse the second part
         if is_high_surrogate(code) {
             let error_msg = || format!("The Unicode sequence '{code:04X}' represents an unfinished character. {}",
-                                    "A follow-up Unicode escape sequence was expected but not found.");
+                                       "A follow-up Unicode escape sequence was expected but not found.");
             if !self.matches("\\") {
                 return self.make_error(error_msg());
             }
@@ -111,12 +99,12 @@ impl<'a> Tokenizer<'a> {
 
             let code2 = self.parse_u16_encoded()?;
             String::from_utf16(&[code, code2]).or_else(|_|
-                self.make_error(format!("Invalid unicode character: \\u{code:04x}\\u{code2:04x}"))
+                self.make_error(format!("Invalid unicode character: \\u{code:04X}\\u{code2:04X}"))
             )
         } else {
             // Otherwise just turn it into a unicode point and return it if it's valid
             String::from_utf16(&[code]).or_else(|_|
-                self.make_error(format!("Invalid unicode character: \\u{code:04x}"))
+                self.make_error(format!("Invalid unicode character: \\u{code:04X}"))
             )
         }
     }
@@ -137,25 +125,92 @@ impl<'a> Tokenizer<'a> {
         }
     }
 
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // Number scanning
+
+    fn make_number(&mut self) -> Result<JsonToken, ParseError> {
+        self.scan_integer()?;
+        self.scan_fraction()?;
+        self.scan_exponent()?;
+        // At this point, the format is guaranteed to match the JSON spec
+        // (save for the slight deviation above), but this format is also accepted by
+        // Rust's str-to-f64 conversion in all cases, so we can safely parse and unwrap it.
+        // https://doc.rust-lang.org/std/primitive.f64.html#impl-FromStr-for-f64
+        let s = &self.source[self.start .. self.current];
+        self.make_token(TokenKind::Number(s.parse().unwrap()))
+    }
+
+    fn scan_integer(&mut self) -> Result<(), ParseError> {
+        // If the number started with a minus sign, demand that at least one digit is present
+        if self.peek_behind() == "-" && !is_number(self.consume()) {
+            return self.make_error("At least a digit was expected after '-'");
+        }
+        // Skip all follow-up digits to scan the integer part.
+        // This violates the official spec which forbids leading zeroes,
+        // but it's both simpler to implement and more flexible towards users.
+        self.skip_digits();
+        Ok(())
+    }
+
+    fn scan_fraction(&mut self) -> Result<(), ParseError> {
+        /* Scans an optional fraction part, consisting of a dot and at least one digit. */
+        if self.matches(".") {
+            if !is_number(self.consume()) {
+                return self.make_error("At least a digit is expected after a fraction dot");
+            }
+            self.skip_digits();
+        }
+
+        Ok(())
+    }
+
+    fn scan_exponent(&mut self) -> Result<(), ParseError> {
+        /* Scans an optional exponent part, consisting of 'e|E', an optional sign,
+         * and at least one digit. */
+        if matches!(self.peek(), "e" | "E") {
+            // Consume the exponent
+            self.advance();
+            // Consume the sign if present
+            if matches!(self.peek(), "-" | "+") { self.advance() }
+            // Expect one digit and consume the rest
+            if !is_number(self.consume()) {
+                return self.make_error("At least a digit is expected after an exponent");
+            }
+            self.skip_digits();
+        }
+
+        Ok(())
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // Other
+
     fn make_keyword(&mut self) -> Result<JsonToken, ParseError> {
         while is_letter(self.peek()) {
             self.advance();
         }
 
         match &self.source[self.start .. self.current] {
-            "null" => Ok(JsonToken::Null),
-            "true" => Ok(JsonToken::True),
-            "false" => Ok(JsonToken::False),
+            "null" => self.make_token(TokenKind::Null),
+            "true" => self.make_token(TokenKind::True),
+            "false" => self.make_token(TokenKind::False),
             x => self.make_error(format!("Unknown (case-sensitive) keyword {x}")),
         }
     }
 
-    fn make_number(&mut self) -> Result<JsonToken, ParseError> {
-        Ok(JsonToken::Colon)
+    fn make_token<T>(&self, kind: TokenKind) -> Result<JsonToken, T> {
+        /* Creates a JsonToken at the current start position */
+        // JSON tokens can't spawn multiple lines so we can deduce its start position
+        let pos = TokenPosition {
+            column: self.position.column - (self.current - self.start),
+            line: self.position.line
+        };
+        Ok(JsonToken { kind, pos })
     }
 
     fn make_error<T, S: Into<String>>(&self, msg: S) -> Result<T, ParseError> {
-        Err(ParseError::new(msg.into(), self.line, self.column))
+        /* Creates a ParseError in the current position */
+        Err(ParseError::new(msg.into(), self.position.line, self.position.column))
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -163,7 +218,7 @@ impl<'a> Tokenizer<'a> {
 
     fn advance(&mut self) {
         self.current += 1;
-        self.column += 1;
+        self.position.column += 1;
     }
 
     fn consume(&mut self) -> &str {
@@ -193,12 +248,19 @@ impl<'a> Tokenizer<'a> {
         loop {
             match self.peek() {
                 "\n" => {
-                    self.line += 1;
-                    self.column = 0;
+                    self.position.line += 1;
+                    self.position.column = 0;
                 },
                 " " | "\r" | "\t" => {},
                 _ => return,
             }
+            self.advance();
+        }
+    }
+
+    fn skip_digits(&mut self) {
+        /* Advances the scanner forward until a non-number is found */
+        while is_number(self.peek()) {
             self.advance();
         }
     }
@@ -214,13 +276,27 @@ fn is_letter(s: &str) -> bool {
     matches!(chars.next(), Some('a'..='z') | Some('A'..='Z') | Some('_')) && chars.next().is_none()
 }
 
-fn is_number(s: &str) -> bool {
+fn is_number_start(s: &str) -> bool {
     let mut chars = s.chars();
     matches!(chars.next(), Some('0'..='9') | Some('-')) && chars.next().is_none()
 }
 
+fn is_number(s: &str) -> bool {
+    let mut chars = s.chars();
+    matches!(chars.next(), Some('0'..='9')) && chars.next().is_none()
+}
+
 fn is_hex(s: &str) -> bool {
     s.chars().all(|ch| ch.is_ascii_hexdigit())
+}
+
+fn is_forbidden_char(x: &str) -> bool {
+    // Forbidden string characters: " / and everything under U+0020
+    matches!(x, "\\" | "\"") || x.encode_utf16().next().unwrap_or(0) < 0x0020
+}
+
+fn string_error_msg(ch: &str) -> String {
+    'a'.into() // TODO change
 }
 
 fn is_high_surrogate(x: u16) -> bool {
