@@ -135,8 +135,7 @@ impl<'a> JsonParser<'a> {
         /* Consumes and returns the current token only if it matches the expected type.
          * If not, returns a ParseError indicating the expected and actual tokens.
          * Only use this method with empty TokenKinds to avoid allocating useless data. */
-        if self.upcoming.kind == expected {
-            // == for TokenKind is overriden to compare only variant type
+        if self.upcoming.kind.same_kind(&expected) {
             self.consume()
         } else {
             self.make_error(

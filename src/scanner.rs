@@ -20,12 +20,12 @@ impl<'a> Scanner<'a> {
 
     pub fn next_token(&mut self) -> Result<JsonToken, ParseError> {
         self.skip_whitespace();
+        self.start = self.current;
 
         if self.is_at_end() {
             return self.make_token(TokenKind::Eof);
         }
 
-        self.start = self.current;
         match self.consume() {
             "{" => self.make_token(TokenKind::LeftBrace),
             "}" => self.make_token(TokenKind::RightBrace),

@@ -12,16 +12,16 @@ pub enum JsonElement {
     Boolean(bool),
     /// A numeric value
     Number(f64),
-    /// A string value. Escape characters and sequences have already been parsed in the contained `String`.
+    /// A string value. Escape characters and sequences have already been parsed in the contained [String].
     String(String),
     /// An array containing any number of other JSON elements.
     Array(Vec<JsonElement>),
     /// A JSON object, consisting of a series of key-value pairs.
     ///
-    /// The pairs are represented using a Vec and are provided in the same order in which they are
+    /// The pairs are represented using a [Vec] and are provided in the same order in which they are
     /// defined in the original source.
     ///
-    /// The `String` keys within an Object are guaranteed to be unique.
+    /// The [String] keys within a [JsonElement::Object] are guaranteed to be unique.
     Object(Vec<(String, JsonElement)>),
 }
 
@@ -36,13 +36,13 @@ pub struct ParseError {
     pub column: usize,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct JsonToken {
     pub kind: TokenKind,
     pub pos: TokenPosition,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TokenKind {
     LeftBrace,
     RightBrace,
@@ -58,7 +58,7 @@ pub enum TokenKind {
     Eof,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TokenPosition {
     pub line: usize,
     pub column: usize,
@@ -96,6 +96,11 @@ impl JsonToken {
         Self { pos, kind }
     }
 
+    pub const fn new(kind: TokenKind, line: usize, column: usize) -> Self {
+        let pos = TokenPosition { line, column };
+        Self { pos, kind }
+    }
+
     pub fn get_string(self) -> String {
         /* Consumes a String-kind token to return the String inside it.
         Will panic if called on a non-string token. */
@@ -106,8 +111,8 @@ impl JsonToken {
     }
 }
 
-impl PartialEq for TokenKind {
-    fn eq(&self, other: &Self) -> bool {
+impl TokenKind {
+    pub fn same_kind(&self, other: &Self) -> bool {
         core::mem::discriminant(self) == core::mem::discriminant(other)
     }
 }
