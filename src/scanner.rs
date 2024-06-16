@@ -151,9 +151,9 @@ impl<'a> Scanner<'a> {
         self.scan_integer()?;
         self.scan_fraction()?;
         self.scan_exponent()?;
-        // At this point, the format is guaranteed to match the JSON spec
-        // (save for the slight deviation above), but this format is also accepted by
-        // Rust's str-to-f64 conversion in all cases, so we can safely parse and unwrap it.
+        // At this point, the format is guaranteed to match the JSON spec.
+        // This format is a subset of Rust's str-to-f64 accepted strings,
+        // so we can safely parse and unwrap it.
         // https://doc.rust-lang.org/std/primitive.f64.html#impl-FromStr-for-f64
         let s = &self.source[self.start..self.current];
         self.make_token(TokenKind::Number(s.parse().unwrap()))
