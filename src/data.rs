@@ -3,9 +3,10 @@
 use std::fmt::Display;
 
 /// A representation of a JSON element.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub enum JsonElement {
     /// A literal `null` value
+    #[default]
     Null,
     /// A boolean value (`true` / `false`)
     Boolean(bool),
@@ -25,7 +26,7 @@ pub enum JsonElement {
 }
 
 /// Returned when a JSON string is malformed or contains any errors.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParseError {
     /// User-friendly description of the error.
     pub msg: String,
