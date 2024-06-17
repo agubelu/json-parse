@@ -4,6 +4,7 @@ use crate::ParseError;
 
 use std::collections::HashSet;
 use std::mem::replace;
+use std::rc::Rc;
 
 pub struct JsonParser<'a> {
     scanner: Scanner<'a>,
@@ -69,7 +70,10 @@ impl<'a> JsonParser<'a> {
             loop {
                 let key_token = self.expect_string()?;
                 let pos = key_token.pos; // Copy this before consuming the token in case we need to error out
-                let key = key_token.get_string();
+
+                // Wrap the String key in a Rc so we can share it between the key-value vec and the key hashset,
+                // since cloning the Rc is cheaper than cloning the String itself.
+                let key = Rc::new(key_token.get_string());
 
                 if keys.contains(&key) {
                     return self.make_error_at(format!("Duplicated object key: \"{key}\""), &pos);
@@ -79,7 +83,7 @@ impl<'a> JsonParser<'a> {
                 self.expect(TokenKind::Colon)?;
                 let value = self.parse_element()?;
 
-                keys.insert(key.clone()); // Is there any way to prevent this clone?
+                keys.insert(key.clone());
                 pairs.push((key, value));
 
                 if !self.matches(TokenKind::Comma)? {
@@ -90,7 +94,13 @@ impl<'a> JsonParser<'a> {
             self.expect(TokenKind::RightBrace)?;
         }
 
-        Ok(JsonElement::Object(pairs))
+        // The HashSet with the keys has been dropped here so all Rc<String> should have only one
+        // reference left, held in `pairs`. We can unwrap them into the actual Strings now.
+        let data = pairs
+            .into_iter()
+            .map(|(k, v)| (Rc::into_inner(k).unwrap(), v))
+            .collect();
+        Ok(JsonElement::Object(data))
     }
 
     fn unexpected_token_error<T>(&self, token: &JsonToken) -> Result<T, ParseError> {
