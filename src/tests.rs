@@ -3,6 +3,11 @@ mod scanner_tests {
     use crate::scanner::Scanner;
     use crate::data::{JsonToken, TokenKind::*};
 
+    pub const fn token(kind: crate::data::TokenKind, line: usize, column: usize) -> JsonToken {
+        let pos = crate::data::TokenPosition { line, column };
+        JsonToken { pos, kind }
+    }
+
     fn _assert_token_sequence(src: &str, tokens: &[JsonToken]) {
         let mut scanner = Scanner::new(src);
         for token in tokens {
@@ -41,24 +46,24 @@ false true
         "#;
 
         let expected = [
-            JsonToken::new(Null, 1, 2),
-            JsonToken::new(True, 2, 0),
-            JsonToken::new(False, 2, 5),
-            JsonToken::new(False, 3, 0),
-            JsonToken::new(True, 3, 6),
-            JsonToken::new(LeftBracket, 4, 0),
-            JsonToken::new(RightBracket, 4, 2),
-            JsonToken::new(LeftBrace, 4, 4),
-            JsonToken::new(RightBrace, 4, 6),
-            JsonToken::new(Colon, 4, 8),
-            JsonToken::new(Comma, 4, 10),
-            JsonToken::new(Number(0.0), 5, 0),
-            JsonToken::new(Number(1.0), 5, 2),
-            JsonToken::new(Number(2.0), 5, 4),
-            JsonToken::new(Number(200.0), 5, 6),
-            JsonToken::new(Number(-100.0), 5, 10),
-            JsonToken::new(String(" abcde ".into()), 6, 0),
-            JsonToken::new(String("123456".into()), 6, 11),
+            token(Null, 1, 2),
+            token(True, 2, 0),
+            token(False, 2, 5),
+            token(False, 3, 0),
+            token(True, 3, 6),
+            token(LeftBracket, 4, 0),
+            token(RightBracket, 4, 2),
+            token(LeftBrace, 4, 4),
+            token(RightBrace, 4, 6),
+            token(Colon, 4, 8),
+            token(Comma, 4, 10),
+            token(Number(0.0), 5, 0),
+            token(Number(1.0), 5, 2),
+            token(Number(2.0), 5, 4),
+            token(Number(200.0), 5, 6),
+            token(Number(-100.0), 5, 10),
+            token(String(" abcde ".into()), 6, 0),
+            token(String("123456".into()), 6, 11),
         ];
 
         _assert_token_sequence(s, &expected);
@@ -69,7 +74,7 @@ false true
         // Check that the scanner provides constant EOFs after running out of tokens, without further advancing.
         let s = "null";
         let mut scanner = Scanner::new(s);
-        assert_eq!(scanner.next_token(), Ok(JsonToken::new(Null, 1, 0)));
+        assert_eq!(scanner.next_token(), Ok(token(Null, 1, 0)));
         let first_eof = scanner.next_token().unwrap();
 
         for _ in 0..1000 {
@@ -88,36 +93,36 @@ false true
         "#;
 
         let expected = [
-            JsonToken::new(Number(0.0), 2, 0),
-            JsonToken::new(Number(1.0), 2, 2),
-            JsonToken::new(Number(20.0), 2, 4),
-            JsonToken::new(Number(300.0), 2, 7),
-            JsonToken::new(Number(1.0), 2, 11),
-            JsonToken::new(Number(-10.0), 2, 19),
-            JsonToken::new(Number(-800.0), 2, 23),
-            JsonToken::new(Number(-123.0), 2, 28),
+            token(Number(0.0), 2, 0),
+            token(Number(1.0), 2, 2),
+            token(Number(20.0), 2, 4),
+            token(Number(300.0), 2, 7),
+            token(Number(1.0), 2, 11),
+            token(Number(-10.0), 2, 19),
+            token(Number(-800.0), 2, 23),
+            token(Number(-123.0), 2, 28),
 
-            JsonToken::new(Number(0.0), 3, 0),
-            JsonToken::new(Number(0.00001), 3, 4),
-            JsonToken::new(Number(123.456), 3, 12),
-            JsonToken::new(Number(-0.111), 3, 20),
-            JsonToken::new(Number(-0.9), 3, 27),
-            JsonToken::new(Number(-888.88), 3, 34),
+            token(Number(0.0), 3, 0),
+            token(Number(0.00001), 3, 4),
+            token(Number(123.456), 3, 12),
+            token(Number(-0.111), 3, 20),
+            token(Number(-0.9), 3, 27),
+            token(Number(-888.88), 3, 34),
 
-            JsonToken::new(Number(0.0), 4, 0),
-            JsonToken::new(Number(0.0), 4, 5),
-            JsonToken::new(Number(10.0), 4, 10),
-            JsonToken::new(Number(12300.0), 4, 14),
-            JsonToken::new(Number(-2000000.0), 4, 25),
-            JsonToken::new(Number(-11e12), 4, 31),
-            JsonToken::new(Number(0.01), 4, 42),
-            JsonToken::new(Number(-123e-10), 4, 48),
+            token(Number(0.0), 4, 0),
+            token(Number(0.0), 4, 5),
+            token(Number(10.0), 4, 10),
+            token(Number(12300.0), 4, 14),
+            token(Number(-2000000.0), 4, 25),
+            token(Number(-11e12), 4, 31),
+            token(Number(0.01), 4, 42),
+            token(Number(-123e-10), 4, 48),
 
-            JsonToken::new(Number(1.0), 5, 0),
-            JsonToken::new(Number(1e97), 5, 7),
-            JsonToken::new(Number(1.234), 5, 20),
-            JsonToken::new(Number(-13.37e-8), 5, 29),
-            JsonToken::new(Number(0.0), 5, 39),
+            token(Number(1.0), 5, 0),
+            token(Number(1e97), 5, 7),
+            token(Number(1.234), 5, 20),
+            token(Number(-13.37e-8), 5, 29),
+            token(Number(0.0), 5, 39),
         ];
 
         _assert_token_sequence(s, &expected);

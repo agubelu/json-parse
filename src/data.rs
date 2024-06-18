@@ -96,11 +96,6 @@ impl JsonToken {
         Self { pos, kind }
     }
 
-    pub const fn new(kind: TokenKind, line: usize, column: usize) -> Self {
-        let pos = TokenPosition { line, column };
-        Self { pos, kind }
-    }
-
     pub fn get_string(self) -> String {
         /* Consumes a String-kind token to return the String inside it.
         Will panic if called on a non-string token. */
