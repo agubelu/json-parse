@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod scanner_tests {
-    use crate::scanner::Scanner;
     use crate::data::{JsonToken, TokenKind::*};
+    use crate::scanner::Scanner;
 
     pub const fn token(kind: crate::data::TokenKind, line: usize, column: usize) -> JsonToken {
         let pos = crate::data::TokenPosition { line, column };
@@ -13,7 +13,10 @@ mod scanner_tests {
         for token in tokens {
             assert_eq!(scanner.next_token().as_ref(), Ok(token));
         }
-        assert!(matches!(scanner.next_token(), Ok(JsonToken { kind: Eof, .. })));
+        assert!(matches!(
+            scanner.next_token(),
+            Ok(JsonToken { kind: Eof, .. })
+        ));
     }
 
     fn _assert_fails(src: &str, line: usize, column: usize, error: &str) {
@@ -101,14 +104,12 @@ false true
             token(Number(-10.0), 2, 19),
             token(Number(-800.0), 2, 23),
             token(Number(-123.0), 2, 28),
-
             token(Number(0.0), 3, 0),
             token(Number(0.00001), 3, 4),
             token(Number(123.456), 3, 12),
             token(Number(-0.111), 3, 20),
             token(Number(-0.9), 3, 27),
             token(Number(-888.88), 3, 34),
-
             token(Number(0.0), 4, 0),
             token(Number(0.0), 4, 5),
             token(Number(10.0), 4, 10),
@@ -117,7 +118,6 @@ false true
             token(Number(-11e12), 4, 31),
             token(Number(0.01), 4, 42),
             token(Number(-123e-10), 4, 48),
-
             token(Number(1.0), 5, 0),
             token(Number(1e97), 5, 7),
             token(Number(1.234), 5, 20),
@@ -141,17 +141,147 @@ false true
 
     #[test]
     fn test_fraction_without_decimal() {
-        _assert_fails("0. ", 1, 2, "At least a digit is expected after a fraction dot");
-        _assert_fails("-123.", 1, 5, "At least a digit is expected after a fraction dot");
-        _assert_fails("1.e8", 1, 2, "At least a digit is expected after a fraction dot");
+        _assert_fails(
+            "0. ",
+            1,
+            2,
+            "At least a digit is expected after a fraction dot",
+        );
+        _assert_fails(
+            "-123.",
+            1,
+            5,
+            "At least a digit is expected after a fraction dot",
+        );
+        _assert_fails(
+            "1.e8",
+            1,
+            2,
+            "At least a digit is expected after a fraction dot",
+        );
     }
 
     #[test]
     fn test_illegal_exponents() {
-        _assert_fails("123e", 1, 4, "At least a digit is expected after an exponent");
-        _assert_fails("-90EA", 1, 4, "At least a digit is expected after an exponent");
-        _assert_fails("-90E+A", 1, 5, "At least a digit is expected after an exponent");
+        _assert_fails(
+            "123e",
+            1,
+            4,
+            "At least a digit is expected after an exponent",
+        );
+        _assert_fails(
+            "-90EA",
+            1,
+            4,
+            "At least a digit is expected after an exponent",
+        );
+        _assert_fails(
+            "-90E+A",
+            1,
+            5,
+            "At least a digit is expected after an exponent",
+        );
         _assert_fails("87.0e+1.2", 1, 7, "Unexpected character: '.'");
-        _assert_fails("87.0e.2", 1, 5, "At least a digit is expected after an exponent");
+        _assert_fails(
+            "87.0e.2",
+            1,
+            5,
+            "At least a digit is expected after an exponent",
+        );
+    }
+
+    #[test]
+    fn test_strings_ok() {
+        let s = r#" "one"  "two" "three"
+"four" "five"  "#;
+
+        let expected = [
+            token(String("one".into()), 1, 1),
+            token(String("two".into()), 1, 8),
+            token(String("three".into()), 1, 14),
+            token(String("four".into()), 2, 0),
+            token(String("five".into()), 2, 7),
+        ];
+
+        _assert_token_sequence(s, &expected);
+    }
+
+    #[test]
+    fn test_string_raw_newline_error() {
+        // Checks that a string can't spawn multiple lines
+        let s = r#" "this is a
+misbehaving string!" "#;
+        _assert_fails(s, 1, 11, "Line breaks are not allowed");
+    }
+
+    #[test]
+    fn test_string_control_characters() {
+        // Checks that raw characters under 0x20 are rejected
+        for ch in 0x00u8..0x20u8 {
+            let mut s = std::string::String::from("\"blah ");
+            s.push(ch as char);
+            s.push_str(" blah\"");
+
+            _assert_fails(&s, 1, 6, "not allowed inside a string");
+        }
+    }
+
+    #[test]
+    fn test_successful_unicode_encoding_ascii() {
+        let s = r#" "\u0075\u006e\u0069\u0063\u006f\u0064\u0065" "#;
+        let tokens = [token(String("unicode".into()), 1, 1)];
+        _assert_token_sequence(s, &tokens);
+    }
+
+    #[test]
+    fn test_successful_unicode_encoding_others() {
+        let s = r#"
+"\u044E\u043D\u0438\u043A\u043E\u0434"
+"\u0075\u006E\u0069\u006B\u014D\u0064\u0073"
+"\u7EDF\u4E00\u7801"
+"\u064A\u0648\u0646\u064A\u0643\u0648\u062F"
+"\u12E9\u1292\u12AE\u12F5"
+"\u30E6\u30CB\u30B3\u30FC\u30C9"
+"\uD83D\uDCA9"
+"\u0079\u0306"
+        "#;
+
+        let tokens = [
+            token(String("юникод".into()), 2, 0),
+            token(String("unikōds".into()), 3, 0),
+            token(String("统一码".into()), 4, 0),
+            token(String("يونيكود".into()), 5, 0),
+            token(String("ዩኒኮድ".into()), 6, 0),
+            token(String("ユニコード".into()), 7, 0),
+            token(String("💩".into()), 8, 0),
+            token(String("y̆".into()), 9, 0),
+        ];
+        _assert_token_sequence(s, &tokens);
+    }
+
+    #[test]
+    fn test_successful_unicode_literals_others() {
+        let s = r#"
+"юникод"
+"unikōds"
+"统一码"
+"يونيكود"
+"ዩኒኮድ"
+"ユニコード"
+"💩"
+"y̆"
+        "#;
+
+        let tokens = [
+            token(String("юникод".into()), 2, 0),
+            token(String("unikōds".into()), 3, 0),
+            token(String("统一码".into()), 4, 0),
+            token(String("يونيكود".into()), 5, 0),
+            token(String("ዩኒኮድ".into()), 6, 0),
+            token(String("ユニコード".into()), 7, 0),
+            token(String("💩".into()), 8, 0),
+            token(String("y̆".into()), 9, 0),
+        ];
+        _assert_token_sequence(s, &tokens);
     }
 }

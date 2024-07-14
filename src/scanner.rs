@@ -1,8 +1,12 @@
 use crate::data::{JsonToken, ParseError, TokenKind, TokenPosition};
 use std::cmp::min;
+use std::iter::Peekable;
+use std::str::Chars;
 
 pub struct Scanner<'a> {
     source: &'a str,
+    char_iter: Peekable<Chars<'a>>,
+    prev_char: char,
     start: usize,
     current: usize,
     position: TokenPosition,
@@ -12,6 +16,8 @@ impl<'a> Scanner<'a> {
     pub fn new(source: &'a str) -> Self {
         Self {
             source,
+            char_iter: source.chars().peekable(),
+            prev_char: '\0',
             start: 0,
             current: 0,
             position: TokenPosition::default(),
@@ -27,13 +33,13 @@ impl<'a> Scanner<'a> {
         }
 
         match self.consume() {
-            "{" => self.make_token(TokenKind::LeftBrace),
-            "}" => self.make_token(TokenKind::RightBrace),
-            "[" => self.make_token(TokenKind::LeftBracket),
-            "]" => self.make_token(TokenKind::RightBracket),
-            "," => self.make_token(TokenKind::Comma),
-            ":" => self.make_token(TokenKind::Colon),
-            "\"" => self.make_string(),
+            '{' => self.make_token(TokenKind::LeftBrace),
+            '}' => self.make_token(TokenKind::RightBrace),
+            '[' => self.make_token(TokenKind::LeftBracket),
+            ']' => self.make_token(TokenKind::RightBracket),
+            ',' => self.make_token(TokenKind::Comma),
+            ':' => self.make_token(TokenKind::Colon),
+            '\"' => self.make_string(),
             x if is_letter(x) => self.make_keyword(),
             x if is_number_start(x) => self.make_number(),
             x => {
@@ -49,18 +55,18 @@ impl<'a> Scanner<'a> {
     fn make_string(&mut self) -> Result<JsonToken, ParseError> {
         let mut string = String::new();
 
-        while !self.matches("\"") {
+        while !self.matches('\"') {
             if self.is_at_end() {
                 return self.make_error_behind("Unterminated string");
             }
 
             match self.consume() {
-                "\\" => string.push_str(&self.parse_escape()?),
+                '\\' => string.push_str(&self.parse_escape()?),
                 x if is_forbidden_char(x) => {
                     let msg = string_error_msg(x);
                     return self.make_error_behind(msg);
                 }
-                x => string.push_str(x),
+                x => string.push(x),
             }
         }
 
@@ -69,17 +75,17 @@ impl<'a> Scanner<'a> {
 
     fn parse_escape(&mut self) -> Result<String, ParseError> {
         match self.consume() {
-            "\"" => Ok("\"".to_owned()),
-            "\\" => Ok("\\".to_owned()),
-            "/" => Ok("/".to_owned()),
-            "b" => Ok("\x08".to_owned()),
-            "f" => Ok("\x0C".to_owned()),
-            "n" => Ok("\n".to_owned()),
-            "r" => Ok("\r".to_owned()),
-            "t" => Ok("\t".to_owned()),
-            "u" => self.parse_unicode_escape(),
+            '\"' => Ok("\"".to_owned()),
+            '\\' => Ok("\\".to_owned()),
+            '/' => Ok("/".to_owned()),
+            'b' => Ok("\x08".to_owned()),
+            'f' => Ok("\x0C".to_owned()),
+            'n' => Ok("\n".to_owned()),
+            'r' => Ok("\r".to_owned()),
+            't' => Ok("\t".to_owned()),
+            'u' => self.parse_unicode_escape(),
             x => {
-                let msg = if x == " " {
+                let msg = if x == ' ' {
                     "A lone \\ is not allowed inside a string (hint: you can escape it with \\\\)"
                         .into()
                 } else {
@@ -102,11 +108,11 @@ impl<'a> Scanner<'a> {
                     "A follow-up Unicode escape sequence was expected but not found."
                 )
             };
-            if !self.matches("\\") {
+            if !self.matches('\\') {
                 return self.make_error_here(error_msg());
             }
 
-            if !self.matches("u") {
+            if !self.matches('u') {
                 return self.make_error_here(error_msg());
             }
 
@@ -130,7 +136,7 @@ impl<'a> Scanner<'a> {
          * Returns an Err if the sequence is not a 4-character hex sequence. */
         let start = self.current;
         for _ in 0..4 {
-            self.advance()
+            self.advance();
         }
         let max = self.source.len(); // Be careful not to panic by overstepping our slice's boundaries
         let seq = &self.source[min(max, start)..min(max, self.current)];
@@ -161,7 +167,7 @@ impl<'a> Scanner<'a> {
 
     fn scan_integer(&mut self) -> Result<(), ParseError> {
         // If the number started with a minus sign, demand that at least one digit is present
-        if self.peek_behind() == "-" && !is_number(self.consume()) {
+        if self.peek_behind() == '-' && !is_number(self.consume()) {
             return self.make_error_behind("At least a digit is expected after '-'");
         }
         // Skip all follow-up digits to scan the integer part.
@@ -173,7 +179,7 @@ impl<'a> Scanner<'a> {
 
     fn scan_fraction(&mut self) -> Result<(), ParseError> {
         /* Scans an optional fraction part, consisting of a dot and at least one digit. */
-        if self.matches(".") {
+        if self.matches('.') {
             if !is_number(self.consume()) {
                 return self.make_error_behind("At least a digit is expected after a fraction dot");
             }
@@ -186,11 +192,11 @@ impl<'a> Scanner<'a> {
     fn scan_exponent(&mut self) -> Result<(), ParseError> {
         /* Scans an optional exponent part, consisting of 'e|E', an optional sign,
          * and at least one digit. */
-        if matches!(self.peek(), "e" | "E") {
+        if matches!(self.peek(), 'e' | 'E') {
             // Consume the exponent
             self.advance();
             // Consume the sign if present
-            if matches!(self.peek(), "-" | "+") {
+            if matches!(self.peek(), '-' | '+') {
                 self.advance()
             }
             // Expect one digit and consume the rest
@@ -269,26 +275,23 @@ impl<'a> Scanner<'a> {
     fn advance(&mut self) {
         self.current += 1;
         self.position.column += 1;
+        self.prev_char = self.char_iter.next().unwrap_or('\0');
     }
 
-    fn consume(&mut self) -> &str {
+    fn consume(&mut self) -> char {
         self.advance();
         self.peek_behind()
     }
 
-    fn peek(&self) -> &str {
-        let i = min(self.current, self.source.len());
-        let j = min(self.current + 1, self.source.len());
-        &self.source[i..j]
+    fn peek(&mut self) -> char {
+        self.char_iter.peek().copied().unwrap_or('\0')
     }
 
-    fn peek_behind(&self) -> &str {
-        let i = min(self.current - 1, self.source.len());
-        let j = min(self.current, self.source.len());
-        &self.source[i..j]
+    fn peek_behind(&self) -> char {
+        self.prev_char
     }
 
-    fn matches(&mut self, expected: &str) -> bool {
+    fn matches(&mut self, expected: char) -> bool {
         let matched = self.peek() == expected;
         if matched {
             self.advance()
@@ -299,12 +302,12 @@ impl<'a> Scanner<'a> {
     fn skip_whitespace(&mut self) {
         loop {
             match self.peek() {
-                "\n" => {
+                '\n' => {
                     self.advance();
                     self.position.line += 1;
                     self.position.column = 0;
                 }
-                " " | "\r" | "\t" => self.advance(),
+                ' ' | '\r' | '\t' => self.advance(),
                 _ => return,
             }
         }
@@ -317,46 +320,43 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn is_at_end(&self) -> bool {
-        self.current >= self.source.len()
+    fn is_at_end(&mut self) -> bool {
+        self.char_iter.peek().is_none()
     }
 }
 
-fn is_letter(s: &str) -> bool {
-    let mut chars = s.chars();
-    matches!(chars.next(), Some('a'..='z') | Some('A'..='Z') | Some('_')) && chars.next().is_none()
+fn is_letter(s: char) -> bool {
+    matches!(s, 'a'..='z' | 'A'..='Z' | '_')
 }
 
-fn is_number_start(s: &str) -> bool {
-    let mut chars = s.chars();
-    matches!(chars.next(), Some('0'..='9') | Some('-')) && chars.next().is_none()
+fn is_number_start(s: char) -> bool {
+    matches!(s, '0'..='9' | '-')
 }
 
-fn is_number(s: &str) -> bool {
-    let mut chars = s.chars();
-    matches!(chars.next(), Some('0'..='9')) && chars.next().is_none()
+fn is_number(s: char) -> bool {
+    s.is_ascii_digit()
 }
 
 fn is_hex(s: &str) -> bool {
     s.chars().all(|ch| ch.is_ascii_hexdigit())
 }
 
-fn is_forbidden_char(x: &str) -> bool {
+fn is_forbidden_char(x: char) -> bool {
     // Forbidden string characters: " / and everything under U+0020
-    matches!(x, "\\" | "\"") || x.encode_utf16().next().unwrap_or(0) < 0x0020
+    matches!(x, '\\' | '\"') || x < 0x0020 as char
 }
 
-fn string_error_msg(ch: &str) -> String {
+fn string_error_msg(ch: char) -> String {
     // ch must be a control character, because lone \'s are handled by parse_escape(),
     // and misplaced double quotes will cause other kind of trouble.
     match ch {
-        "\n" => "Line breaks are not allowed inside a string (hint: you can escape them as \\n)".into(),
-        "\t" => "Literal tabs are not allowed inside a string (hint: you can escape them as \\t)".into(),
-        "\r" => "Carriage return line breaks are not allowed inside a string (hint: you can escape them as \\r)".into(),
-        "\x08" =>  "Backspace control characters are not allowed inside a string (hint: you can escape them as \\b)".into(),
-        "\x0C" =>  "Form-feed control characters are not allowed inside a string (hint: you can escape them as \\f)".into(),
+        '\n' => "Line breaks are not allowed inside a string (hint: you can escape them as \\n)".into(),
+        '\t' => "Literal tabs are not allowed inside a string (hint: you can escape them as \\t)".into(),
+        '\r' => "Carriage return line breaks are not allowed inside a string (hint: you can escape them as \\r)".into(),
+        '\x08' =>  "Backspace control characters are not allowed inside a string (hint: you can escape them as \\b)".into(),
+        '\x0C' =>  "Form-feed control characters are not allowed inside a string (hint: you can escape them as \\f)".into(),
         _ => {
-            let code = ch.encode_utf16().next().unwrap_or(0);
+            let code = ch as u32;
             let hex = format!("{code:04X}");
             format!("The control character U+{hex} is not allowed inside a string (hint: you can escape it as \\u{hex}")
         }
