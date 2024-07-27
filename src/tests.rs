@@ -336,3 +336,152 @@ true"#;
         _assert_token_sequence(s, &tokens);
     }
 }
+
+#[cfg(test)]
+mod parser_tests {
+    use crate::{
+        parse,
+        JsonElement::{self, *},
+    };
+
+    fn _assert_parses(json: &str, expected: JsonElement) {
+        assert_eq!(parse(json), Ok(expected));
+    }
+
+    fn _assert_fails(json: &str, line: usize, col: usize, msg: &str) {
+        if let Err(parse_error) = parse(json) {
+            assert_eq!(parse_error.line, line);
+            assert_eq!(parse_error.column, col);
+            assert!(parse_error.msg.contains(msg));
+        } else {
+            panic!("Did not fail as expected");
+        }
+    }
+
+    #[test]
+    fn test_basic_values() {
+        _assert_parses("null", Null);
+        _assert_parses("true", Boolean(true));
+        _assert_parses("false", Boolean(false));
+        _assert_parses("0", Number(0.0));
+        _assert_parses(" -1.7e2 ", Number(-170.0));
+        _assert_parses("\"hey there\"", String("hey there".into()));
+        _assert_parses("[]", Array(vec![]));
+        _assert_parses("{}", Object(vec![]));
+    }
+
+    #[test]
+    fn test_arrays_simple() {
+        _assert_parses(
+            "[1, 2, \"\\u0075\", false, {}]",
+            Array(vec![
+                Number(1.0),
+                Number(2.0),
+                String("u".into()),
+                Boolean(false),
+                Object(vec![]),
+            ]),
+        );
+    }
+
+    #[test]
+    fn test_arrays_trailing_comma() {
+        _assert_fails("[1, 2, 3,]", 1, 9, "Unexpected ']'");
+    }
+
+    #[test]
+    fn test_arrays_unclosed() {
+        _assert_fails(
+            "[1, 2, 3 false",
+            1,
+            9,
+            "Expected ']', found boolean (false)",
+        );
+    }
+
+    #[test]
+    fn test_nested_arrays() {
+        _assert_parses(
+            "[ [ [ [ [ [ [ [ ] ] ] ] ] ] ] ]",
+            Array(vec![Array(vec![Array(vec![Array(vec![Array(vec![
+                Array(vec![Array(vec![Array(vec![])])]),
+            ])])])])]),
+        );
+    }
+
+    #[test]
+    fn test_nested_arrays_mismatched() {
+        _assert_fails("[[[[]]]", 1, 7, "Expected ']', found end-of-file");
+        _assert_fails("[[[]]]]", 1, 6, "Expected end-of-file, found ']'");
+    }
+
+    #[test]
+    fn test_objects_ok() {
+        let json = r#"
+        {
+            "one": 1,
+            "two" : [1, 2, 3],
+            " other " : null ,
+            "nested": {
+                "one": 1
+            }
+        } "#;
+        _assert_parses(
+            json,
+            Object(vec![
+                ("one".into(), Number(1.0)),
+                (
+                    "two".into(),
+                    Array(vec![Number(1.0), Number(2.0), Number(3.0)]),
+                ),
+                (" other ".into(), Null),
+                ("nested".into(), Object(vec![("one".into(), Number(1.0))])),
+            ]),
+        );
+    }
+
+    #[test]
+    fn test_objects_key_rules() {
+        _assert_parses(
+            // Keys are not case-sensitive
+            r#"{"one": true, "ONE": false}"#,
+            Object(vec![
+                ("one".into(), Boolean(true)),
+                ("ONE".into(), Boolean(false)),
+            ]),
+        );
+
+        _assert_parses(
+            // Non-ascii keys allowed
+            r#"{"💩": true, "码": false}"#,
+            Object(vec![
+                ("💩".into(), Boolean(true)),
+                ("码".into(), Boolean(false)),
+            ]),
+        );
+
+        _assert_fails(
+            // Duplicated keys at the same level not allowed
+            r#"{"one": true, "one": false}"#,
+            1,
+            14,
+            "Duplicated object key",
+        );
+
+        _assert_fails(
+            // Test duplicated unicode-escaped keys
+            r#"{"one": true, "\u006f\u006e\u0065": false}"#,
+            1,
+            14,
+            "Duplicated object key",
+        );
+
+        _assert_fails(
+            // Non-string keys not allowed
+            r#"{1: "one", 2: "two"}"#,
+            1,
+            1,
+            "Expected string, found number (1)",
+        );
+    }
+}
