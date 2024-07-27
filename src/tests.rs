@@ -284,4 +284,55 @@ misbehaving string!" "#;
         ];
         _assert_token_sequence(s, &tokens);
     }
+
+    #[test]
+    fn test_unfinished_unicode_escape() {
+        let s1 = r#" "Naughty: \uAB" "#; // Unfinished within closed string
+        _assert_fails(s1, 1, 16, "Invalid Unicode escape sequence");
+        let s2 = r#" "Naughty: \uAB"#; // Unexpected EOF
+        _assert_fails(s2, 1, 16, "Unterminated string");
+    }
+
+    #[test]
+    fn test_invalid_unicode_escape() {
+        let s1 = r#" "Not a hex sequence: \u00PS" "#; // Invalid hex
+        _assert_fails(s1, 1, 27, "Invalid Unicode escape sequence");
+        let s2 = r#" "Error: \uD821 hehe" "#; // Lone high surrogate
+        _assert_fails(s2, 1, 15, "unfinished character");
+        let s3 = r#" "Error: \uD834\u0075" "#; // High surrogate + invalid follow-up
+        _assert_fails(s3, 1, 20, "Invalid unicode character");
+    }
+
+    #[test]
+    fn test_byte_offsets() {
+        // Introduces a bunch of strings with multi-byte characters,
+        // then tests that the internal byte counters remain consistent
+        // by using them to parse a number and a keyword.
+        let s = r#"
+"юникод"
+"unikōds"
+"统一码"
+"يونيكود"
+"ዩኒኮድ"
+"ユニコード"
+"💩"
+1.8e307
+"y̆y̆y̆y̆y̆y̆y̆y̆y̆"
+"i love 𝄞 music 𝄞"
+true"#;
+        let tokens = [
+            token(String("юникод".into()), 2, 0),
+            token(String("unikōds".into()), 3, 0),
+            token(String("统一码".into()), 4, 0),
+            token(String("يونيكود".into()), 5, 0),
+            token(String("ዩኒኮድ".into()), 6, 0),
+            token(String("ユニコード".into()), 7, 0),
+            token(String("💩".into()), 8, 0),
+            token(Number(1.8e307), 9, 0),
+            token(String("y̆y̆y̆y̆y̆y̆y̆y̆y̆".into()), 10, 0),
+            token(String("i love 𝄞 music 𝄞".into()), 11, 0),
+            token(True, 12, 0),
+        ];
+        _assert_token_sequence(s, &tokens);
+    }
 }

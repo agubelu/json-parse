@@ -4,12 +4,29 @@ use std::iter::Peekable;
 use std::str::Chars;
 
 pub struct Scanner<'a> {
+    // The original string, which is directly sliced to parse things like keywords and numbers.
+    // From it, we derive a per-character iterator, because iterating directly over
+    // the indices of a UTF-8 encoded &str can land us midway through multi-byte characters.
     source: &'a str,
     char_iter: Peekable<Chars<'a>>,
+    // Remember the last consumed character, to support peeking backwards in the scanning process.
     prev_char: char,
+    // These indices are used to address the original string. Note that they are byte indices,
+    // and not character indices. This means that every `char` from `char_iter` can advance
+    // `current` anywhere between 1 and 4 positions, depending on how many bytes the
+    // char requires to be represented in UTF-8.
     start: usize,
     current: usize,
+    // 2-dimensional (line, column) position of a token. If the token is multi-character,
+    // it points to the position of the starting character. Line is 1-based and column is 0-based.
+    // This info is user-facing so, differently from the indices above, these positions are
+    // per-character instead of per-byte.
     position: TokenPosition,
+    // Aux data to remember where the current token started. Since (current - start) is a number
+    // of bytes, which doesn't necessarily equal to the number of characters advanced, storing
+    // the initial position is simpler and quicker than doing the match backwards to find out
+    // how many characters we advanced.
+    start_position: TokenPosition,
 }
 
 impl<'a> Scanner<'a> {
@@ -21,12 +38,14 @@ impl<'a> Scanner<'a> {
             start: 0,
             current: 0,
             position: TokenPosition::default(),
+            start_position: TokenPosition::default(),
         }
     }
 
     pub fn next_token(&mut self) -> Result<JsonToken, ParseError> {
         self.skip_whitespace();
         self.start = self.current;
+        self.start_position = self.position;
 
         if self.is_at_end() {
             return self.make_token(TokenKind::Eof);
@@ -197,7 +216,7 @@ impl<'a> Scanner<'a> {
             self.advance();
             // Consume the sign if present
             if matches!(self.peek(), '-' | '+') {
-                self.advance()
+                self.advance();
             }
             // Expect one digit and consume the rest
             if !is_number(self.consume()) {
@@ -235,12 +254,10 @@ impl<'a> Scanner<'a> {
 
     fn make_token<T>(&self, kind: TokenKind) -> Result<JsonToken, T> {
         /* Creates a JsonToken at the current start position */
-        // JSON tokens can't spawn multiple lines so we can deduce its start position
-        let pos = TokenPosition {
-            column: self.position.column - (self.current - self.start),
-            line: self.position.line,
-        };
-        Ok(JsonToken { kind, pos })
+        Ok(JsonToken {
+            kind,
+            pos: self.start_position,
+        })
     }
 
     fn make_error_here<T, S: Into<String>>(&self, msg: S) -> Result<T, ParseError> {
@@ -273,9 +290,9 @@ impl<'a> Scanner<'a> {
     // Scanning control
 
     fn advance(&mut self) {
-        self.current += 1;
-        self.position.column += 1;
         self.prev_char = self.char_iter.next().unwrap_or('\0');
+        self.position.column += 1;
+        self.current += self.prev_char.len_utf8();
     }
 
     fn consume(&mut self) -> char {
@@ -294,7 +311,7 @@ impl<'a> Scanner<'a> {
     fn matches(&mut self, expected: char) -> bool {
         let matched = self.peek() == expected;
         if matched {
-            self.advance()
+            self.advance();
         }
         matched
     }
