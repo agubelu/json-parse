@@ -1,12 +1,17 @@
 [package]
 name = "json-parse"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2021"
 
 authors = ["agubelu"]
 license-file = "LICENSE"
+license = "MIT"
 readme = "README.md"
 repository = "https://github.com/agubelu/json-parse"
+documentation = "https://docs.rs/json-parse/"
 description = "A low-level JSON parser for Rust with a simple API and full spec support."
+
+keywords = ["parser", "json", "utility"]
+categories = ["parsing"]
 
 [dependencies]
