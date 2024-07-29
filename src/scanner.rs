@@ -80,7 +80,7 @@ impl<'a> Scanner<'a> {
             }
 
             match self.consume() {
-                '\\' => string.push_str(&self.parse_escape()?),
+                '\\' => string.push(self.parse_escape()?),
                 x if is_forbidden_char(x) => {
                     let msg = string_error_msg(x);
                     return self.make_error_behind(msg);
@@ -92,16 +92,16 @@ impl<'a> Scanner<'a> {
         self.make_token(TokenKind::String(string))
     }
 
-    fn parse_escape(&mut self) -> Result<String, ParseError> {
+    fn parse_escape(&mut self) -> Result<char, ParseError> {
         match self.consume() {
-            '"' => Ok("\"".to_owned()),
-            '\\' => Ok("\\".to_owned()),
-            '/' => Ok("/".to_owned()),
-            'b' => Ok("\x08".to_owned()),
-            'f' => Ok("\x0C".to_owned()),
-            'n' => Ok("\n".to_owned()),
-            'r' => Ok("\r".to_owned()),
-            't' => Ok("\t".to_owned()),
+            '"' => Ok('"'),
+            '\\' => Ok('\\'),
+            '/' => Ok('/'),
+            'b' => Ok('\x08'),
+            'f' => Ok('\x0C'),
+            'n' => Ok('\n'),
+            'r' => Ok('\r'),
+            't' => Ok('\t'),
             'u' => self.parse_unicode_escape(),
             x => {
                 let msg = if x == ' ' {
@@ -115,7 +115,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn parse_unicode_escape(&mut self) -> Result<String, ParseError> {
+    fn parse_unicode_escape(&mut self) -> Result<char, ParseError> {
         // The unicode prefix has been consumed, parse the remaining sequence
         let code = self.parse_u16_encoded()?;
 
@@ -136,14 +136,17 @@ impl<'a> Scanner<'a> {
             }
 
             let code2 = self.parse_u16_encoded()?;
-            String::from_utf16(&[code, code2]).or_else(|_| {
-                self.make_error_behind(format!(
-                    "Invalid unicode character: \\u{code:04X}\\u{code2:04X}"
-                ))
-            })
+            char::decode_utf16([code, code2])
+                .next()
+                .unwrap()
+                .or_else(|_| {
+                    self.make_error_behind(format!(
+                        "Invalid unicode character: \\u{code:04X}\\u{code2:04X}"
+                    ))
+                })
         } else {
             // Otherwise just turn it into a unicode point and return it if it's valid
-            String::from_utf16(&[code]).or_else(|_| {
+            char::decode_utf16([code]).next().unwrap().or_else(|_| {
                 self.make_error_behind(format!("Invalid unicode character: \\u{code:04X}"))
             })
         }
