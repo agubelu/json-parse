@@ -58,7 +58,7 @@ impl<'a> Scanner<'a> {
             ']' => self.make_token(TokenKind::RightBracket),
             ',' => self.make_token(TokenKind::Comma),
             ':' => self.make_token(TokenKind::Colon),
-            '\"' => self.make_string(),
+            '"' => self.make_string(),
             x if is_letter(x) => self.make_keyword(),
             x if is_number_start(x) => self.make_number(),
             x => {
@@ -74,7 +74,7 @@ impl<'a> Scanner<'a> {
     fn make_string(&mut self) -> Result<JsonToken, ParseError> {
         let mut string = String::new();
 
-        while !self.matches('\"') {
+        while !self.matches('"') {
             if self.is_at_end() {
                 return self.make_error_behind("Unterminated string");
             }
@@ -94,7 +94,7 @@ impl<'a> Scanner<'a> {
 
     fn parse_escape(&mut self) -> Result<String, ParseError> {
         match self.consume() {
-            '\"' => Ok("\"".to_owned()),
+            '"' => Ok("\"".to_owned()),
             '\\' => Ok("\\".to_owned()),
             '/' => Ok("/".to_owned()),
             'b' => Ok("\x08".to_owned()),
@@ -360,7 +360,7 @@ fn is_hex(s: &str) -> bool {
 
 fn is_forbidden_char(x: char) -> bool {
     // Forbidden string characters: " / and everything under U+0020
-    matches!(x, '\\' | '\"') || x < 0x0020 as char
+    matches!(x, '\\' | '"') || x < 0x0020 as char
 }
 
 fn string_error_msg(ch: char) -> String {
